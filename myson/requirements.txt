@@ -1,0 +1,3 @@
+# husk core uses only the stdlib + a running Ollama.
+# optional niceties:
+# rich
