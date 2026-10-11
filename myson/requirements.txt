@@ -1,3 +1,7 @@
-# husk core uses only the stdlib + a running Ollama.
-# optional niceties:
-# rich
+# myson brain deps
+torch
+tensorboard
+numpy
+fastapi
+uvicorn[standard]
+# optional: sympy (math tool), sentence-transformers or ollama embeddings (memory)
