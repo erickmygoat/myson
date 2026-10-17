@@ -1,9 +1,3 @@
-# === RAW LIFT FROM OLD REPO — UNWIRED ===
-# Lifted verbatim for the Phase-2 track to harden. NOT imported anywhere yet.
-# seal.py: pending SEAL-safe quarantine (replace evolve_codebase/DeploymentModule
-#          auto-patch with a review-queue diff; add sandboxed eval + safety probe).
-# Its original `from my_son...` imports will NOT resolve until rewired in Phase 2.
-
 import json
 import os
 import logging

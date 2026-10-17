@@ -82,3 +82,16 @@ Settings (no fork → avoids AGPL). `host.docker.internal` if Odysseus runs in D
 No abliteration / safety-floor removal. No never-refuse / unconditional-obedience
 core. Enforced mechanically by the SEAL safety probe, not just policy. Offensive
 tooling from the old repo is NOT ported.
+
+
+## Base model & the "bigger model" question (honest framing)
+The base ("mind stone") is a **quantized** open model that fits 8 GB VRAM:
+**Gemma-4-12B @ Q4 (~7-8 GB)** or **Qwen3.5-9B @ Q4 (~6 GB)**. The goal of "a bigger
+model that still fits" is delivered by **quantization (fewer bits, same params)** +
+**adaptive compute**, NOT by literally fewer parameters. `config.MODEL` is swappable.
+
+The "new model" = **open weights + the myson wrapper as one system** — you don't merge
+code into weights. Practical **adaptive depth** is already in the design: the recursion
+loop spends more passes on hard queries (test-time compute) = "acts bigger when needed"
+on a wrapped model today. See `docs/FUTURE.md` for the later tracks (own-model latent
+tricks: bitnet/mor/mla; speculative decoding; cloud-GPU / RTX-3090 scale-up).

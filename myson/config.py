@@ -3,7 +3,7 @@ import os
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 # the mind stone — swap to your fine-tune later ("myson")
-MODEL = os.environ.get("MYSON_MODEL", "qwen3.5:9b")
+MODEL = os.environ.get("MYSON_MODEL", "qwen3.5:9b")  # Q4 options (fit 8GB): qwen3.5:9b (~6GB), gemma4:12b (~7-8GB). swappable.
 
 SYSTEM = (
     "You are MY SON, a private local assistant running on the user's own machine. "

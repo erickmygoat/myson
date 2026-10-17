@@ -1,8 +1,3 @@
-# === RAW LIFT FROM OLD REPO — UNWIRED ===
-# Lifted verbatim for the Phase-2 track to harden. NOT imported anywhere yet.
-# memory: old-repo memory module, reference for the Phase-2 3-tier memory build.
-# Its original `from my_son...` imports will NOT resolve until rewired in Phase 2.
-
 """
 This module provides Long-Term Memory capabilities using a Vector Database (ChromaDB).
 """

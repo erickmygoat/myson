@@ -1,1 +1,1 @@
-# learning/ — SEAL self-improvement (seal.py is a raw lift, unwired pending Phase-2)
+# SEAL (seal.py raw, unwired pending Phase-2)
