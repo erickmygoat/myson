@@ -31,6 +31,25 @@ class Memory:
                         "emb TEXT, importance REAL, ts REAL)")
         self.db.commit()
 
+    def close(self):
+        """Release the SQLite handle. Safe to call more than once."""
+        db = getattr(self, "db", None)
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
+            self.db = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
     @staticmethod
     def _bow(text: str, dim: int = 64) -> List[float]:
         v = [0.0] * dim
@@ -50,7 +69,8 @@ class Memory:
     def _episodic(self) -> List[dict]:
         if not os.path.exists(self.epath):
             return []
-        return [json.loads(l) for l in open(self.epath, encoding="utf-8") if l.strip()]
+        with open(self.epath, encoding="utf-8") as f:
+            return [json.loads(l) for l in f if l.strip()]
 
     def recall(self, query: str, k: int = 5, a: float = 1.0, b: float = 0.3, c: float = 0.2) -> List[str]:
         q = self.embed(query); now = time.time(); rows = []
