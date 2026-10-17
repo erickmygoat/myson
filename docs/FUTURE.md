@@ -18,12 +18,22 @@ The recursion loop spends MORE passes on hard queries and fewer on easy ones
 (test-time compute) — that IS "acts bigger when it needs to," achievable on a black-box
 Ollama model right now. No weight access required.
 
-## Latent tricks — ONLY if you train your OWN small model (later track)
-These need control of the model's internals, so they do NOT apply to a black-box Ollama
-wrap of Qwen/Gemma. Park them until you fine-tune/train your own small model:
-- `bitnet.py` — 1-bit quantization (BitNet): extreme compression of YOUR weights.
-- `mor.py` — Mixture-of-Recursions: adaptive per-token depth INSIDE your own net.
-- `mla.py` — Multi-head Latent Attention: KV-cache compression (DeepSeek-style).
+## Latent tricks — BUILT (own-model track, in myson/compression/)
+These need control of the model's internals, so they attach to the repo's OWN transformer
+(myson/training/model.py), NOT to a black-box Ollama wrap of Qwen/Gemma. Lifted from the
+corpus, bugs fixed, tested, and measured on the 4070 (see myson/compression/benchmark.py):
+- `compression/bitnet.py` — 1.58-bit ternary quantization. **9.24x smaller weights** on a
+  4.49M MySonModel (17.1 → 1.85 MB). Memory win is real; wall-clock is not (int8 store,
+  no packed kernel). Correct STE + int8 inference store.
+- `compression/mla.py` — Multi-head Latent Attention (KV-cache compression). **16x smaller
+  KV cache** at seq 512. Fixed the RoPE sin-slot bug + the cached-decode crash; correct for
+  prefill and incremental decode.
+- `compression/mor.py` — Mixture-of-Recursions (adaptive per-token depth). **~52% fewer
+  inference token-steps**. Fixed: real gather/scatter (was masking → no saving) + a ponder
+  aux loss so the depth predictor actually trains (argmax gave it zero gradient).
+
+Known follow-up for the training path: when a real data loader is lifted into
+`training/`, mask pad tokens to `-100` so padding stops leaking into the loss.
 
 ## Speed & scale (later)
 - **Speculative decoding** — a small draft model proposes tokens, the big model verifies:
