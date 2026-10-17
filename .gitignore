@@ -1,0 +1,5 @@
+
+# local runtime state
+.myson_mem*/
+__pycache__/
+*.pyc

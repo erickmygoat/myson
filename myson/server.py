@@ -9,17 +9,19 @@ main.py exposed the agent to the whole LAN; we don't. No auth token, no upload
 endpoint, no tunnel — a personal server on your own machine.
 """
 import json
+import os
 import time
 import uuid
 from typing import Optional, List
 
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from .core.llm import MindStoneMissing
 from .brain import Brain
-from .config import MODEL, MODELS
+from .reasoning.recursive import reason_trace
+from .config import MODEL, MODELS, MEMORY_DIR
 
 app = FastAPI(title="myson", version="0.2")
 _brain: Optional[Brain] = None
@@ -31,6 +33,23 @@ def get_brain() -> Brain:
     if _brain is None:
         _brain = Brain()
     return _brain
+
+
+_seal = None
+
+
+def get_seal():
+    """SEALEngine over the same memory dir the CLI uses (built lazily)."""
+    global _seal
+    if _seal is None:
+        from .learning.seal_safe import SEALEngine
+        _seal = SEALEngine(
+            memory_path=os.path.join(MEMORY_DIR, "learned_rules.json"),
+            review_dir=os.path.join(MEMORY_DIR, "review_queue"),
+            snapshot_dir=os.path.join(MEMORY_DIR, "snapshots"),
+            llm=get_brain().llm,
+        )
+    return _seal
 
 
 class ChatMessage(BaseModel):
@@ -119,6 +138,91 @@ def health():
     return {"ok": True, "model": MODEL, "roster": roster,
             "mind_stone_reachable": brain.llm.available(),
             "embeddings": brain.embed_fn is not None}
+
+
+# ======================================================================================
+# myson workspace API — the panels the UI needs (scratchpad / memory / SEAL queue).
+# These are myson extensions, not part of the OpenAI surface.
+# ======================================================================================
+
+class ThinkRequest(BaseModel):
+    messages: List[ChatMessage]
+    max_steps: Optional[int] = None
+
+
+def _trace_to_dict(t) -> dict:
+    return {
+        "answer": t.answer,
+        "passes": t.passes,
+        "halt_reason": t.halt_reason,
+        "n_backtracks": t.n_backtracks,
+        "llm_calls": t.llm_calls,
+        "scratchpad": list(t.scratchpad),
+        "steps": [{"pass_idx": s.pass_idx, "kind": s.kind, "best_score": s.best_score,
+                   "scores": list(s.scores), "chosen": s.chosen} for s in t.steps],
+        "votes": t.votes,
+    }
+
+
+@app.post("/myson/think")
+def think(req: ThinkRequest):
+    """Run the recursive loop and return the FULL trace (candidates, verifier scores,
+    backtracks, halt reason) so the UI scratchpad can show myson thinking."""
+    brain = get_brain()
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    opts = {}
+    if req.max_steps:
+        opts["max_steps"] = req.max_steps
+    try:
+        t = reason_trace(messages, llm=brain.llm, embed=brain.embed_fn,
+                         system=None, **opts)
+        return _trace_to_dict(t)
+    except MindStoneMissing as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+
+
+@app.get("/myson/memory")
+def memory(q: Optional[str] = None, k: int = 10):
+    brain = get_brain()
+    try:
+        if q:
+            return {"query": q, "recalled": brain.mem.recall(q, k=k)}
+        return {"recent": brain.mem.recent(k)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/myson/seal")
+def seal_list():
+    try:
+        return {"pending": get_seal().list_pending_reviews(),
+                "versions": get_seal().list_versions()}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/myson/seal/{review_id}/{action}")
+def seal_action(review_id: str, action: str):
+    eng = get_seal()
+    if action == "approve":
+        return eng.approve_review(review_id, approver="workspace")
+    if action == "reject":
+        return eng.reject_review(review_id, note="rejected in workspace")
+    if action == "apply":
+        return eng.apply_approved(review_id)
+    return JSONResponse({"error": f"unknown action {action}"}, status_code=400)
+
+
+_UI_PATH = os.path.join(os.path.dirname(__file__), "ui", "index.html")
+
+
+@app.get("/", response_class=HTMLResponse)
+def workspace():
+    try:
+        with open(_UI_PATH, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("<h1>myson</h1><p>UI not found. API is at /v1/chat/completions.</p>")
 
 
 def main(host: str = "127.0.0.1", port: int = 8080):
