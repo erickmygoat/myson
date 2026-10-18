@@ -153,10 +153,11 @@ class TestServer(unittest.TestCase):
         shutil.rmtree(self.d, ignore_errors=True)
 
     def test_models_endpoint_lists_roster_without_dupes(self):
+        from myson import config
         data = self.client.get("/v1/models").json()["data"]
         ids = [m["id"] for m in data]
-        self.assertEqual(len(ids), len(set(ids)))
-        self.assertIn("qwen3.5:9b", ids)
+        self.assertEqual(len(ids), len(set(ids)))          # no duplicates
+        self.assertIn(config.MODEL, ids)                   # active mind stone is listed
 
     def test_chat_completion_envelope_is_openai_shaped(self):
         r = self.client.post("/v1/chat/completions",
@@ -185,6 +186,31 @@ class TestServer(unittest.TestCase):
         r = self.client.post("/v1/chat/completions",
                              json={"messages": [{"role": "user", "content": "x"}], "force": "tools"})
         self.assertEqual(r.json()["myson"]["mode"], "tools")
+
+
+# --------------------------------------------------------------------------------------
+# Backend factory (local-weights vs Ollama) — construction only, never loads a model
+# --------------------------------------------------------------------------------------
+class TestBackend(unittest.TestCase):
+    def test_local_backend_is_default_and_lazy(self):
+        from myson.core.backend import make_llm
+        from myson.core.local_llm import LocalLLM
+        llm = make_llm(backend="local", model="some/repo-or-path")
+        self.assertIsInstance(llm, LocalLLM)
+        self.assertIsNone(llm._model)          # weights NOT loaded at construction
+        for m in ("chat", "ask", "chat_stream", "embed", "available"):
+            self.assertTrue(hasattr(llm, m), m)
+
+    def test_ollama_backend_available_as_fallback(self):
+        from myson.core.backend import make_llm
+        from myson.core.llm import LLMClient
+        self.assertIsInstance(make_llm(backend="ollama", model="qwen3.5:9b"), LLMClient)
+
+    def test_local_missing_is_a_mind_stone_missing(self):
+        # so every `except MindStoneMissing` handler catches a local-load failure too
+        from myson.core.local_llm import LocalModelMissing
+        from myson.core.llm import MindStoneMissing
+        self.assertTrue(issubclass(LocalModelMissing, MindStoneMissing))
 
 
 if __name__ == "__main__":

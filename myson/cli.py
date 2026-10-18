@@ -62,11 +62,13 @@ def run_chat():
 # --------------------------------------------------------------------------------------
 def _engine():
     from .learning.seal_safe import SEALEngine
+    from .core.backend import make_llm
     base = config.MEMORY_DIR
     return SEALEngine(
         memory_path=os.path.join(base, "learned_rules.json"),
         review_dir=os.path.join(base, "review_queue"),
         snapshot_dir=os.path.join(base, "snapshots"),
+        llm=make_llm(),          # queue commands don't call it; consolidate/adapt do
     )
 
 

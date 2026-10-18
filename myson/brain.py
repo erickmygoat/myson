@@ -13,7 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .core.llm import LLMClient, MindStoneMissing
+from .core.llm import MindStoneMissing
+from .core.backend import make_llm
 from .memory.memory import Memory
 from . import config
 from . import router as _router
@@ -32,7 +33,7 @@ class BrainResult:
     trace: Optional[object] = None  # a recursive.RunTrace when mode == "recursion"
 
 
-def _make_embed_fn(llm: LLMClient):
+def _make_embed_fn(llm):
     """Pick ONE embedder for the whole session so the memory store never mixes real
     embeddings with the stdlib fallback (which would corrupt cosine). Returns an embed
     callable if Ollama's embed model answers a probe, else None (Memory/Similarity then
@@ -47,8 +48,8 @@ def _make_embed_fn(llm: LLMClient):
 
 
 class Brain:
-    def __init__(self, llm: Optional[LLMClient] = None, memory: Optional[Memory] = None):
-        self.llm = llm or LLMClient()
+    def __init__(self, llm=None, memory: Optional[Memory] = None):
+        self.llm = llm or make_llm()
         self.embed_fn = _make_embed_fn(self.llm)
         self.mem = memory or Memory(directory=config.MEMORY_DIR, embed_fn=self.embed_fn)
         self.tools = build_default_tools()

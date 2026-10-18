@@ -5,29 +5,51 @@ never changes when you swap it. Everything is local — no cloud, no API keys.
 """
 import os
 
+# --- backend: where the mind stone runs ---------------------------------------------
+# "local"  = weights loaded DIRECTLY in-process via HuggingFace transformers. This is the
+#            default and the point: the model is yours to edit, fine-tune, merge, Heretic,
+#            or compress. Needs torch + transformers (+ accelerate/bitsandbytes for 4-bit).
+# "ollama" = optional fallback: talk to a local Ollama daemon (a black box you cannot edit).
+BACKEND = os.environ.get("MYSON_BACKEND", "local")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 # --- the mind stone ------------------------------------------------------------------
-# The active chat model. Swap to your own fine-tune/merge later (e.g. "myson").
-MODEL = os.environ.get("MYSON_MODEL", "qwen3.5:9b")
+# For BACKEND=local: a HuggingFace repo id OR a local directory of YOUR OWN weights
+#   (fine-tuned / merged / abliterated). Point MYSON_MODEL at your model when you have one.
+# For BACKEND=ollama: an Ollama tag (e.g. "qwen3.5:9b-q4_K_M").
+_DEFAULT_LOCAL = "Qwen/Qwen2.5-7B-Instruct"     # real, widely-available, fits 8GB in 4-bit
+_DEFAULT_OLLAMA = "qwen3.5:9b"
+MODEL = os.environ.get("MYSON_MODEL",
+                       _DEFAULT_LOCAL if BACKEND == "local" else _DEFAULT_OLLAMA)
 
-# Named roster of models that FIT this box (8 GB VRAM + 32 GB RAM). Only models that
-# actually run locally belong here — dense <=~12B at Q4, or a ~20B MoE with CPU offload.
-# Datacenter-class flagships (GLM 5.3, full DeepSeek/Qwen-100B+) are intentionally absent;
-# they do not start on this hardware. The router (Phase C) may pick a role-fit model from
-# this roster; `MODEL` is the default when no role maps.
-MODELS = {
-    "default": os.environ.get("MYSON_MODEL", "qwen3.5:9b"),  # all-rounder
-    "coder":   os.environ.get("MYSON_MODEL_CODER", "qwen3.5:9b"),
-    "big":     os.environ.get("MYSON_MODEL_BIG", "gemma4:12b"),   # more params, quantized
-}
+# Named roster of models that FIT this box (8 GB VRAM + 32 GB RAM) — dense <=~12B in 4-bit.
+# Datacenter flagships (GLM 5.3, full DeepSeek/Qwen-100B+) are absent; they do not start
+# on this hardware. The router may pick a role-fit model; MODEL is the default.
+if BACKEND == "local":
+    MODELS = {
+        "default": MODEL,
+        "coder":   os.environ.get("MYSON_MODEL_CODER", "Qwen/Qwen2.5-Coder-7B-Instruct"),
+        "big":     os.environ.get("MYSON_MODEL_BIG", "google/gemma-2-9b-it"),
+    }
+else:
+    MODELS = {
+        "default": MODEL,
+        "coder":   os.environ.get("MYSON_MODEL_CODER", "qwen3.5:9b"),
+        "big":     os.environ.get("MYSON_MODEL_BIG", "gemma4:12b"),
+    }
 
-# Embedding model — powers the recursion verifier's similarity signal and memory's
-# hybrid retrieval. Small and cheap; degrade gracefully to text-cosine if absent.
-EMBED_MODEL = os.environ.get("MYSON_EMBED_MODEL", "nomic-embed-text")
+# Local-backend loading knobs.
+LOCAL_LOAD_4BIT = os.environ.get("MYSON_LOAD_4BIT", "1") not in ("0", "false", "False")
+LOCAL_DEVICE = os.environ.get("MYSON_DEVICE") or None    # None -> cuda if available else cpu
+MAX_NEW_TOKENS = int(os.environ.get("MYSON_MAX_NEW_TOKENS", "512"))
 
-# Context window. These models advertise huge contexts (256K), but at 8 GB VRAM the KV
-# cache — not the weights — is what OOMs you. Keep this modest and measure under load.
+# Embedding model. local: None -> embed with the chat model's own hidden states (no extra
+# download). ollama: a small embed model tag. Degrades to text-cosine if unavailable.
+EMBED_MODEL = os.environ.get("MYSON_EMBED_MODEL",
+                             "" if BACKEND == "local" else "nomic-embed-text") or None
+
+# Context window. Models advertise huge contexts (256K), but at 8 GB VRAM the KV cache —
+# not the weights — is what OOMs you. Keep this modest and measure under load.
 NUM_CTX = int(os.environ.get("MYSON_NUM_CTX", "8192"))
 
 # --- persona (Phase D refines this) --------------------------------------------------
