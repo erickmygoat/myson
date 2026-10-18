@@ -345,13 +345,22 @@ class SEALEngine:
 
     @staticmethod
     def _default_grader():
-        if LLMClient is None:
-            return None
-        grader_model = os.environ.get("MYSON_GRADER_MODEL", MYSON_MODEL)
+        # Build the grader on the SAME backend the rest of myson uses (local weights by
+        # default), not a hardcoded Ollama client — otherwise on the local backend the
+        # "independent grader" points at a non-running Ollama with a HF repo id as the tag
+        # and the safety probe can't run. Use MYSON_GRADER_MODEL for stronger independence
+        # (a distinct model); on an 8 GB box it defaults to the same model in a grading role.
+        grader_model = os.environ.get("MYSON_GRADER_MODEL") or MYSON_MODEL
         try:
-            return LLMClient(model=grader_model)
+            from ..core.backend import make_llm
+            return make_llm(model=grader_model)
         except Exception:
-            return LLMClient()
+            if LLMClient is None:
+                return None
+            try:
+                return LLMClient(model=grader_model)
+            except Exception:
+                return LLMClient()
 
     # -- low-level LLM access ----------------------------------------------------------
 

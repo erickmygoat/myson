@@ -31,11 +31,13 @@ from myson.memory.memory import Memory
 class MockLLM:
     """Scripted stand-in for LLMClient — records calls, needs no model."""
     num_ctx = 8192
+    model_id = "mock/model"          # so Brain._served_model reports a real value
 
     def __init__(self, judge="chat", embed_ok=False):
         self.calls = []
         self.judge = judge
         self.embed_ok = embed_ok
+        self.last_messages = None    # capture what the model actually received
 
     def embed(self, text, model=None):
         if not self.embed_ok:
@@ -47,6 +49,7 @@ class MockLLM:
 
     def chat(self, messages, system=None, tools=None, temperature=0.7, model=None):
         self.calls.append(("chat", model, system))
+        self.last_messages = messages
         return {"role": "assistant", "content": f"[mock {model}] {messages[-1]['content'][:20]}"}
 
     def chat_stream(self, messages, system=None, temperature=0.7, model=None):
@@ -133,6 +136,18 @@ class TestBrain(unittest.TestCase):
         res = self.brain.respond([{"role": "user", "content": "did you hear me say hey"}], remember=False)
         self.assertTrue(any("hey" in r.lower() for r in res.recalled))
 
+    def test_steering_prefix_is_stripped_before_the_model(self):
+        # /fast forces chat; the model must receive "hello there", not "/fast hello there"
+        self.brain.respond([{"role": "user", "content": "/fast hello there"}])
+        self.assertEqual(self.llm.last_messages[-1]["content"], "hello there")
+        # and memory stores the cleaned text, not the command
+        res = self.brain.respond([{"role": "user", "content": "what did I say"}], remember=False)
+        self.assertFalse(any("/fast" in r for r in res.recalled))
+
+    def test_result_reports_the_model_that_actually_served(self):
+        res = self.brain.respond([{"role": "user", "content": "hi"}])
+        self.assertEqual(res.model, "mock/model")   # the loaded model, not a roster name
+
 
 # --------------------------------------------------------------------------------------
 # Server (OpenAI-compatible)
@@ -200,6 +215,21 @@ class TestBackend(unittest.TestCase):
         self.assertIsNone(llm._model)          # weights NOT loaded at construction
         for m in ("chat", "ask", "chat_stream", "embed", "available"):
             self.assertTrue(hasattr(llm, m), m)
+
+    def test_both_backends_expose_the_full_client_interface(self):
+        # interface-drift guard: the brain reads llm.num_ctx and calls chat/ask/chat_stream/
+        # embed/available. If either backend drops one of these, the real path crashes even
+        # though mock-based tests pass. (This is the guard the num_ctx bug slipped past.)
+        from myson.core.backend import make_llm
+        REQUIRED_ATTRS = ("num_ctx",)
+        REQUIRED_METHODS = ("chat", "ask", "chat_stream", "embed", "available")
+        for backend in ("local", "ollama"):
+            llm = make_llm(backend=backend, model="x")
+            for a in REQUIRED_ATTRS:
+                self.assertTrue(hasattr(llm, a), f"{backend} missing attr {a}")
+                self.assertIsInstance(getattr(llm, a), int, f"{backend}.{a} not an int")
+            for m in REQUIRED_METHODS:
+                self.assertTrue(callable(getattr(llm, m, None)), f"{backend} missing {m}()")
 
     def test_ollama_backend_available_as_fallback(self):
         from myson.core.backend import make_llm

@@ -143,11 +143,17 @@ def memory_report(model: nn.Module) -> dict:
     for _, m in model.named_modules():
         if isinstance(m, (BitLinear, BitLinearInference)):
             bit_ids.add(id(m.weight))
+    # non-ternary real params count as fp32
     for _, p in model.named_parameters():
         if id(p) in bit_ids:
             bit_params += p.numel()
         else:
             float_params += p.numel()
+    # BitLinearInference stores its ternary weight as an int8 BUFFER (not a Parameter), so
+    # named_parameters() misses it — pick it up here so inference models are counted too.
+    for _, b in model.named_buffers():
+        if id(b) in bit_ids:
+            bit_params += b.numel()
     bit_bytes = bit_params * 1.58 / 8.0
     float_bytes = float_params * 4.0
     total = bit_params + float_params

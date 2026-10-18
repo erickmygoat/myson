@@ -10,6 +10,7 @@ endpoint, no tunnel — a personal server on your own machine.
 """
 import json
 import os
+import threading
 import time
 import uuid
 from typing import Optional, List
@@ -25,30 +26,38 @@ from .config import MODEL, MODELS, MEMORY_DIR
 
 app = FastAPI(title="myson", version="0.2")
 _brain: Optional[Brain] = None
+_seal = None
+# One lock guards both lazy builds. Brain() construction loads the full model (via the
+# embed probe), so without this the UI's concurrent first requests (/health, /myson/memory,
+# /myson/seal all fire on page load) would each build a Brain and load the model two or
+# three times at once -> OOM on 8 GB. Double-checked locking keeps the steady state lock-free.
+_init_lock = threading.Lock()
 
 
 def get_brain() -> Brain:
-    """Lazily build the brain once (so importing the module never needs Ollama)."""
+    """Lazily build the brain once (thread-safe; model loads on first build)."""
     global _brain
     if _brain is None:
-        _brain = Brain()
+        with _init_lock:
+            if _brain is None:
+                _brain = Brain()
     return _brain
 
 
-_seal = None
-
-
 def get_seal():
-    """SEALEngine over the same memory dir the CLI uses (built lazily)."""
+    """SEALEngine over the same memory dir the CLI uses (built lazily, thread-safe)."""
     global _seal
     if _seal is None:
-        from .learning.seal_safe import SEALEngine
-        _seal = SEALEngine(
-            memory_path=os.path.join(MEMORY_DIR, "learned_rules.json"),
-            review_dir=os.path.join(MEMORY_DIR, "review_queue"),
-            snapshot_dir=os.path.join(MEMORY_DIR, "snapshots"),
-            llm=get_brain().llm,
-        )
+        brain = get_brain()                 # build/reuse the single brain first
+        with _init_lock:
+            if _seal is None:
+                from .learning.seal_safe import SEALEngine
+                _seal = SEALEngine(
+                    memory_path=os.path.join(MEMORY_DIR, "learned_rules.json"),
+                    review_dir=os.path.join(MEMORY_DIR, "review_queue"),
+                    snapshot_dir=os.path.join(MEMORY_DIR, "snapshots"),
+                    llm=brain.llm,
+                )
     return _seal
 
 

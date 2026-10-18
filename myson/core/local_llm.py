@@ -34,12 +34,19 @@ class LocalModelMissing(MindStoneMissing):
 
 class LocalLLM:
     def __init__(self, model: str, device: Optional[str] = None, load_4bit: bool = True,
-                 max_new_tokens: int = 512, embed_model: Optional[str] = None):
+                 max_new_tokens: int = 512, num_ctx: Optional[int] = None):
         self.model_id = model
         self.device = device            # None -> auto (cuda if available else cpu)
         self.load_4bit = load_4bit
         self.max_new_tokens = max_new_tokens
-        self.embed_model = embed_model  # None -> embed with the chat model's hidden states
+        # embeddings come from the loaded model's hidden states (see embed()); no separate
+        # embedding model for the local backend yet.
+        # context budget — part of the shared client interface (the brain's long-context
+        # reducer reads llm.num_ctx); defaults to config.NUM_CTX.
+        if num_ctx is None:
+            from ..config import NUM_CTX
+            num_ctx = NUM_CTX
+        self.num_ctx = num_ctx
         self._tok = None
         self._model = None
         self._lock = threading.Lock()
@@ -98,19 +105,28 @@ class LocalLLM:
         text = "".join(f"{m['role'].upper()}: {m['content']}\n" for m in msgs)
         return text + "ASSISTANT:"
 
+    def _gen_kwargs(self, temperature: float) -> dict:
+        """Sampling kwargs for generate(). Only pass `temperature` when sampling — passing
+        it with do_sample=False makes transformers warn (or error on strict versions)."""
+        kw = {"max_new_tokens": self.max_new_tokens,
+              "pad_token_id": self._tok.eos_token_id}
+        if temperature and temperature > 0:
+            kw.update(do_sample=True, temperature=temperature)
+        else:
+            kw.update(do_sample=False)
+        return kw
+
     def chat(self, messages: list[dict], system: Optional[str] = None,
              tools: list | None = None, temperature: float = 0.7,
              model: str | None = None) -> dict:
+        # `model` is accepted for interface parity but ignored: this backend serves the one
+        # loaded model (an 8 GB box can't hold two). Set MYSON_MODEL to switch it.
         import torch
         self._ensure_loaded()
         prompt = self._render(messages, system)
         inputs = self._tok(prompt, return_tensors="pt").to(self._model.device)
         with torch.no_grad():
-            out = self._model.generate(
-                **inputs, max_new_tokens=self.max_new_tokens,
-                do_sample=temperature > 0, temperature=max(1e-4, temperature),
-                pad_token_id=self._tok.eos_token_id,
-            )
+            out = self._model.generate(**inputs, **self._gen_kwargs(temperature))
         text = self._tok.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
         return {"role": "assistant", "content": text.strip()}
 
@@ -119,25 +135,37 @@ class LocalLLM:
 
     def chat_stream(self, messages: list[dict], system: Optional[str] = None,
                     temperature: float = 0.7, model: str | None = None):
-        import torch
         from transformers import TextIteratorStreamer
         self._ensure_loaded()
         prompt = self._render(messages, system)
         inputs = self._tok(prompt, return_tensors="pt").to(self._model.device)
-        streamer = TextIteratorStreamer(self._tok, skip_prompt=True, skip_special_tokens=True)
-        kwargs = dict(**inputs, max_new_tokens=self.max_new_tokens,
-                      do_sample=temperature > 0, temperature=max(1e-4, temperature),
-                      pad_token_id=self._tok.eos_token_id, streamer=streamer)
-        thread = threading.Thread(target=self._model.generate, kwargs=kwargs)
+        streamer = TextIteratorStreamer(self._tok, skip_prompt=True,
+                                        skip_special_tokens=True, timeout=300)
+        kwargs = dict(**inputs, **self._gen_kwargs(temperature), streamer=streamer)
+        err: list = []
+
+        def _run():
+            try:
+                self._model.generate(**kwargs)
+            except BaseException as e:            # surface OOM/errors instead of a silent empty stream
+                err.append(e)
+                try:
+                    streamer.end()                # unblock the iterator
+                except Exception:
+                    pass
+
+        thread = threading.Thread(target=_run)
         thread.start()
         for piece in streamer:
             if piece:
                 yield piece
         thread.join()
+        if err:
+            raise LocalModelMissing(f"generation failed: {type(err[0]).__name__}: {err[0]}")
 
     def embed(self, text: str, model: str | None = None) -> list[float]:
-        """Mean-pooled last hidden state — a local embedding with no extra model/deps.
-        (Swap in a dedicated embedding model via embed_model later if you want.)"""
+        """Mean-pooled last hidden state of the loaded model — a local embedding with no
+        extra model or dependency."""
         import torch
         self._ensure_loaded()
         inputs = self._tok(text, return_tensors="pt", truncation=True,

@@ -29,5 +29,5 @@ def make_llm(backend: str | None = None, model: str | None = None):
         device=config.LOCAL_DEVICE,
         load_4bit=config.LOCAL_LOAD_4BIT,
         max_new_tokens=config.MAX_NEW_TOKENS,
-        embed_model=config.EMBED_MODEL,
+        num_ctx=config.NUM_CTX,
     )

@@ -79,52 +79,72 @@ class Brain:
 
     # -- the composed response ------------------------------------------------------
 
-    def respond(self, messages, temperature: float = 0.7, force: str | None = None,
-                remember: bool = True) -> BrainResult:
-        sys_override, convo, last_user = self._split(messages)
-        system, recalled = self._system_with_memory(sys_override, last_user)
+    def _clean_convo(self, convo, route):
+        """Strip a steering prefix (/think, /fast, /tools) from the last user message so it
+        never reaches the model. Returns (convo_for_model, clean_last_user_text)."""
+        clean = route.cleaned_text
+        if not clean:                       # forced route or empty -> leave convo untouched
+            last = next((m["content"] for m in reversed(convo) if m["role"] == "user"), "")
+            return convo, last
+        out = [dict(m) for m in convo]
+        for i in range(len(out) - 1, -1, -1):
+            if out[i]["role"] == "user":
+                out[i]["content"] = clean
+                break
+        return out, clean
 
-        # oversized input -> map-reduce it down to fit the context window first
-        convo = maybe_reduce(convo, self.llm, num_ctx=self.llm.num_ctx)
+    def _dispatch(self, convo, system, mode, model, temperature):
+        """Run one path and return (answer, trace). Shared by respond + respond_stream."""
+        if mode == "recursion":
+            trace = reason_trace(convo, llm=self.llm, system=system, embed=self.embed_fn,
+                                 max_steps=config.RECURSION_MAX_STEPS)
+            return trace.answer, trace
+        if mode == "tools":
+            return run_with_tools(convo, self.llm, tools=self.tools, system=system,
+                                  temperature=min(temperature, 0.3)), None
+        return self.llm.chat(convo, system=system, temperature=temperature,
+                             model=model).get("content", ""), None
 
-        r = _router.route(convo, llm=self.llm, force=force)
-        model = config.MODELS.get(r.model_role, config.MODEL)
+    def _served_model(self, requested: str) -> str:
+        """The model that ACTUALLY answered. The Ollama backend loads the requested roster
+        model on demand, so `requested` is truthful there. The local backend serves one
+        loaded model (an 8 GB box can't hold two), so per-request roster switching is a
+        no-op and we report the loaded model id instead of the requested one."""
+        return getattr(self.llm, "model_id", None) or requested
 
-        if r.mode == "recursion":
-            trace = reason_trace(
-                convo, llm=self.llm, system=system, embed=self.embed_fn,
-                max_steps=config.RECURSION_MAX_STEPS,
-            )
-            answer, extra_trace = trace.answer, trace
-        elif r.mode == "tools":
-            answer = run_with_tools(convo, self.llm, tools=self.tools, system=system,
-                                    temperature=min(temperature, 0.3))
-            extra_trace = None
-        else:  # chat
-            answer = self.llm.chat(convo, system=system, temperature=temperature,
-                                   model=model).get("content", "")
-            extra_trace = None
-
-        if remember and last_user:
+    def _remember(self, remember, user_text, answer):
+        if remember and user_text:
             try:
-                self.mem.save("user", last_user)
+                self.mem.save("user", user_text)
                 if answer:
                     self.mem.save("assistant", answer)
             except Exception:
                 pass
 
-        return BrainResult(answer=answer, mode=r.mode, model=model,
-                           route_reason=r.reason, recalled=recalled, trace=extra_trace)
+    def respond(self, messages, temperature: float = 0.7, force: str | None = None,
+                remember: bool = True) -> BrainResult:
+        sys_override, convo, last_user = self._split(messages)
+        system, recalled = self._system_with_memory(sys_override, last_user)
+        convo = maybe_reduce(convo, self.llm, num_ctx=self.llm.num_ctx)
+        r = _router.route(convo, llm=self.llm, force=force)
+        convo, user_text = self._clean_convo(convo, r)
+        model = config.MODELS.get(r.model_role, config.MODEL)
+
+        answer, trace = self._dispatch(convo, system, r.mode, model, temperature)
+        self._remember(remember, user_text, answer)
+        return BrainResult(answer=answer, mode=r.mode, model=self._served_model(model),
+                           route_reason=r.reason, recalled=recalled, trace=trace)
 
     def respond_stream(self, messages, temperature: float = 0.7, force: str | None = None,
                        remember: bool = True):
-        """Yield answer text in pieces. Only the plain-chat path streams natively; the
-        tool and recursion paths compute fully (they need the whole answer to verify/act)
-        then yield it once. Either way the caller gets a stream of str deltas."""
+        """Yield answer text in pieces. Only the plain-chat path streams natively; the tool
+        and recursion paths compute fully (they need the whole answer to verify/act) then
+        yield it once. Either way the caller gets a stream of str deltas."""
         sys_override, convo, last_user = self._split(messages)
         system, _ = self._system_with_memory(sys_override, last_user)
         convo = maybe_reduce(convo, self.llm, num_ctx=self.llm.num_ctx)
         r = _router.route(convo, llm=self.llm, force=force)
+        convo, user_text = self._clean_convo(convo, r)
         model = config.MODELS.get(r.model_role, config.MODEL)
 
         collected = []
@@ -134,15 +154,8 @@ class Brain:
                 collected.append(piece)
                 yield piece
         else:
-            res = self.respond(messages, temperature=temperature, force=r.mode, remember=False)
-            collected.append(res.answer)
-            yield res.answer
+            answer, _ = self._dispatch(convo, system, r.mode, model, temperature)
+            collected.append(answer)
+            yield answer
 
-        answer = "".join(collected)
-        if remember and last_user:
-            try:
-                self.mem.save("user", last_user)
-                if answer:
-                    self.mem.save("assistant", answer)
-            except Exception:
-                pass
+        self._remember(remember, user_text, "".join(collected))
