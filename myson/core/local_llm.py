@@ -14,7 +14,7 @@ run slowly in RAM. `transformers` is imported lazily and the weights load on fir
 constructing this (and importing the package, starting the server, running tests) never
 pulls gigabytes.
 
-`model` may be a HuggingFace repo id (e.g. "Qwen/Qwen2.5-7B-Instruct") OR a local directory
+`model` may be a HuggingFace repo id (e.g. "google/gemma-4-E4B-it") OR a local directory
 of your own fine-tuned or merged weights.
 """
 from __future__ import annotations

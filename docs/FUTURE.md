@@ -4,8 +4,8 @@
 "Bigger model, fewer params but still big" is delivered by **quantization** — fewer
 BITS per parameter, NOT fewer parameters — plus **adaptive compute**, not by literally
 shrinking the param count. The current pick is **Gemma 4 26B-A4B @ 4-bit** (14.2 GB), which is
-bigger than 8 GB of VRAM and so runs split between the GPU and RAM; Gemma 4 12B and Qwen3.5-9B
-are the smaller options that fit the card. `config.MODEL` stays swappable, so you can change
+bigger than 8 GB of VRAM and so runs split between the GPU and RAM; Gemma 4 12B is the
+smaller option that fits the card. `config.MODEL` stays swappable, so you can change
 the mind stone without touching the brain. The current plan and status live in
 [ROADMAP.md](ROADMAP.md); this file keeps the longer-term notes.
 

@@ -63,7 +63,7 @@ except Exception:                           # pragma: no cover - import shim
             "machine. You are direct, capable, and candid. Hard boundary: refuse "
             "anything that would harm the user or other people. Everything else: help."
         )
-        MYSON_MODEL = "qwen3.5:9b"
+        MYSON_MODEL = "gemma4:26b-a4b-it-qat"
 
 
 # ======================================================================================

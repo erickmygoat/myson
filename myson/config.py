@@ -26,7 +26,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 #   For BACKEND=local:  a HF repo id OR a local dir of your own weights (fine-tuned/merged).
 #   For BACKEND=ollama: an Ollama tag (e.g. "gemma4:26b-a4b-it-qat").
 _DEFAULT_GGUF  = "unsloth/gemma-4-26B-A4B-it-qat-GGUF"  # 26B-A4B MoE, QAT 4-bit
-_DEFAULT_LOCAL = "Qwen/Qwen2.5-7B-Instruct"             # fits 8 GB in 4-bit via transformers
+_DEFAULT_LOCAL = "google/gemma-4-E4B-it"                # small Gemma 4: fits 8 GB in 4-bit via transformers
 _DEFAULT_OLLAMA = "gemma4:26b-a4b-it-qat"
 MODEL = os.environ.get(
     "MYSON_MODEL",
@@ -46,13 +46,13 @@ if BACKEND == "gguf":
 elif BACKEND == "local":
     MODELS = {
         "default": MODEL,
-        "coder":   os.environ.get("MYSON_MODEL_CODER", "Qwen/Qwen2.5-Coder-7B-Instruct"),
-        "big":     os.environ.get("MYSON_MODEL_BIG", "google/gemma-2-9b-it"),
+        "coder":   os.environ.get("MYSON_MODEL_CODER", MODEL),
+        "big":     os.environ.get("MYSON_MODEL_BIG", "google/gemma-4-12B-it"),
     }
 else:
     MODELS = {
         "default": MODEL,
-        "coder":   os.environ.get("MYSON_MODEL_CODER", "qwen3.5:9b"),
+        "coder":   os.environ.get("MYSON_MODEL_CODER", "gemma4:12b-it-qat"),
         "big":     os.environ.get("MYSON_MODEL_BIG", "gemma4:26b-a4b"),
     }
 

@@ -1,3 +1,7 @@
+> **Historical design document (October 2026).** Written when the model was Qwen3.5-9B served
+> by Ollama. The model is now Gemma 4 26B-A4B through the GGUF backend; the design stands.
+> Current plan and status: [ROADMAP.md](ROADMAP.md).
+
 # myson — Brain Architecture (synthesis)
 
 *Qwen (the mind) + your code (the brain) + Odysseus (the face). Synthesized from 3

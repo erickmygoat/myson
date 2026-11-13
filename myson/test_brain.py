@@ -246,7 +246,7 @@ class TestBackend(unittest.TestCase):
     def test_ollama_backend_available_as_fallback(self):
         from myson.core.backend import make_llm
         from myson.core.llm import LLMClient
-        self.assertIsInstance(make_llm(backend="ollama", model="qwen3.5:9b"), LLMClient)
+        self.assertIsInstance(make_llm(backend="ollama", model="gemma4:12b-it-qat"), LLMClient)
 
     def test_local_missing_is_a_mind_stone_missing(self):
         # so every `except MindStoneMissing` handler catches a local-load failure too

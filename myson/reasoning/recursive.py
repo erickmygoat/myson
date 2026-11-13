@@ -3,7 +3,7 @@
 This is the runtime reasoning core. It reuses the *control algorithm* of
 ``reasoning/rat_urm.py`` (RAT-URM: generate -> verify -> backtrack -> re-draft,
 with a 3-signal verifier and a bounded backtrack budget) but re-homes it from
-LATENT space to TEXT space, because the base model (Qwen3.5-9B via Ollama) is a
+LATENT space to TEXT space, because the base model (a downloaded open model) is a
 black box that emits only tokens -- there are no hidden states to iterate.
 
 TRM's state split maps to text:
