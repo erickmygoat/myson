@@ -207,7 +207,19 @@ class TestServer(unittest.TestCase):
 # Backend factory (local-weights vs Ollama) — construction only, never loads a model
 # --------------------------------------------------------------------------------------
 class TestBackend(unittest.TestCase):
-    def test_local_backend_is_default_and_lazy(self):
+    @unittest.skipIf(os.environ.get("MYSON_BACKEND", "gguf").strip().lower() != "gguf",
+                     "MYSON_BACKEND overrides the default backend in this environment")
+    def test_gguf_backend_is_default_and_lazy(self):
+        # "gguf" is the home path now; make_llm() with no backend must return it, unloaded.
+        from myson.core.backend import make_llm
+        from myson.core.gguf_llm import GGUFLLM
+        llm = make_llm()                        # no backend arg -> config default (gguf)
+        self.assertIsInstance(llm, GGUFLLM)
+        self.assertIsNone(llm._llm)             # weights NOT loaded at construction
+        for m in ("chat", "ask", "chat_stream", "embed", "available"):
+            self.assertTrue(hasattr(llm, m), m)
+
+    def test_local_backend_is_lazy(self):
         from myson.core.backend import make_llm
         from myson.core.local_llm import LocalLLM
         llm = make_llm(backend="local", model="some/repo-or-path")
@@ -223,7 +235,7 @@ class TestBackend(unittest.TestCase):
         from myson.core.backend import make_llm
         REQUIRED_ATTRS = ("num_ctx",)
         REQUIRED_METHODS = ("chat", "ask", "chat_stream", "embed", "available")
-        for backend in ("local", "ollama"):
+        for backend in ("local", "ollama", "gguf"):
             llm = make_llm(backend=backend, model="x")
             for a in REQUIRED_ATTRS:
                 self.assertTrue(hasattr(llm, a), f"{backend} missing attr {a}")
@@ -241,6 +253,19 @@ class TestBackend(unittest.TestCase):
         from myson.core.local_llm import LocalModelMissing
         from myson.core.llm import MindStoneMissing
         self.assertTrue(issubclass(LocalModelMissing, MindStoneMissing))
+
+    def test_gguf_missing_is_a_mind_stone_missing(self):
+        from myson.core.gguf_llm import GGUFModelMissing
+        from myson.core.llm import MindStoneMissing
+        self.assertTrue(issubclass(GGUFModelMissing, MindStoneMissing))
+
+    def test_unknown_backend_is_an_error_not_a_silent_default(self):
+        # a typo like MYSON_BACKEND=olama used to fall through to the default backend
+        from myson.core.backend import make_llm
+        from myson.core.gguf_llm import GGUFLLM
+        with self.assertRaises(ValueError):
+            make_llm(backend="olama", model="x")
+        self.assertIsInstance(make_llm(backend=" GGUF ", model="x"), GGUFLLM)   # case/space tolerant
 
 
 if __name__ == "__main__":

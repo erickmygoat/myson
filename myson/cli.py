@@ -32,7 +32,7 @@ def run_chat():
     brain = Brain()
     reachable = brain.llm.available()
     print(f"MY SON — mind stone: {config.MODEL}"
-          f"{'' if reachable else '  [!] Ollama not reachable — start it and pull the model'}")
+          f"{'' if reachable else f'  [!] the {config.BACKEND} backend is not ready — see SETUP.md'}")
     print("type 'exit' to quit, prefix a message with /think, /fast or /tools to steer.\n")
     history: list[dict] = []
     while True:

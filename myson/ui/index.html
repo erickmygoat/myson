@@ -103,7 +103,8 @@ async function refreshStatus(){
   try{
     const h = await (await fetch('/health')).json();
     $('#statusDot').classList.toggle('on', !!h.mind_stone_reachable);
-    $('#statusMeta').textContent = `${h.model} · ${h.mind_stone_reachable?'ready':'Ollama offline'}`
+    $('#statusMeta').textContent = `${h.model} · ${h.mind_stone_reachable?'ready':'model runtime not ready'}`
+      + (h.placement && h.placement !== 'not loaded yet' ? ` · ${h.placement}` : '')
       + ` · embeddings ${h.embeddings?'on':'off (text-cosine)'}`;
   }catch(e){ $('#statusMeta').textContent = 'server unreachable'; }
 }

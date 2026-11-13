@@ -1,8 +1,9 @@
 """LocalLLM — the mind stone loaded DIRECTLY on your machine (HuggingFace transformers).
 
-This is the backend that makes the model truly YOURS: the weights live in your process,
-on your GPU, so you can edit them, fine-tune (QLoRA), merge, abliterate/Heretic, or apply
-the compression track — none of which a black-box server (Ollama) lets you do.
+This is the backend for working ON the weights: they live in your process, on your GPU,
+so you can fine-tune (QLoRA), merge, or apply the compression track — none of which a
+serving daemon (Ollama) lets you do. For simply running a model, the gguf backend is the
+default and fits far bigger models on the same card.
 
 Same interface as the Ollama client (chat / ask / chat_stream / embed / available) so the
 brain, server, CLI and UI don't care which backend is serving.
@@ -14,7 +15,7 @@ constructing this (and importing the package, starting the server, running tests
 pulls gigabytes.
 
 `model` may be a HuggingFace repo id (e.g. "Qwen/Qwen2.5-7B-Instruct") OR a local directory
-of your own fine-tuned / merged / abliterated weights.
+of your own fine-tuned or merged weights.
 """
 from __future__ import annotations
 

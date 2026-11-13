@@ -27,10 +27,11 @@ from .config import MODEL, MODELS, MEMORY_DIR
 app = FastAPI(title="myson", version="0.2")
 _brain: Optional[Brain] = None
 _seal = None
-# One lock guards both lazy builds. Brain() construction loads the full model (via the
-# embed probe), so without this the UI's concurrent first requests (/health, /myson/memory,
-# /myson/seal all fire on page load) would each build a Brain and load the model two or
-# three times at once -> OOM on 8 GB. Double-checked locking keeps the steady state lock-free.
+# One lock guards both lazy builds. Brain() construction can load the full model (the
+# transformers backend does, via the embed probe; the gguf backend waits for the first chat),
+# so without this the UI's concurrent first requests (/health, /myson/memory, /myson/seal all
+# fire on page load) would each build a Brain and could load the model two or three times at
+# once -> OOM on 8 GB. Double-checked locking keeps the steady state lock-free.
 _init_lock = threading.Lock()
 
 
@@ -146,7 +147,9 @@ def health():
     roster = list(dict.fromkeys([MODEL, *MODELS.values()]))   # order-preserving dedup
     return {"ok": True, "model": MODEL, "roster": roster,
             "mind_stone_reachable": brain.llm.available(),
-            "embeddings": brain.embed_fn is not None}
+            "embeddings": brain.embed_fn is not None,
+            # gguf backend: where the weights ended up ("12 of 30 layers on GPU, ...")
+            "placement": getattr(brain.llm, "placement", None)}
 
 
 # ======================================================================================

@@ -6,26 +6,44 @@ never changes when you swap it. Everything is local — no cloud, no API keys.
 import os
 
 # --- backend: where the mind stone runs ---------------------------------------------
-# "local"  = weights loaded DIRECTLY in-process via HuggingFace transformers. This is the
-#            default and the point: the model is yours to edit, fine-tune, merge, Heretic,
-#            or compress. Needs torch + transformers (+ accelerate/bitsandbytes for 4-bit).
-# "ollama" = optional fallback: talk to a local Ollama daemon (a black box you cannot edit).
-BACKEND = os.environ.get("MYSON_BACKEND", "local")
+# "gguf"   = GGUF weights via llama-cpp-python with CUDA offload (the default). llama.cpp can
+#            split a model between the GPU and system RAM, which is the only way a model
+#            bigger than 8 GB of VRAM runs on this box at all.
+# "local"  = weights loaded in-process via HuggingFace transformers (fp16 / bnb-4bit). Heavier
+#            on 8 GB; it exists for the own-model tracks (fine-tune, merge, compression).
+# "ollama" = optional fallback: talk to a local Ollama daemon.
+BACKEND = os.environ.get("MYSON_BACKEND", "gguf").strip().lower()
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 # --- the mind stone ------------------------------------------------------------------
-# For BACKEND=local: a HuggingFace repo id OR a local directory of YOUR OWN weights
-#   (fine-tuned / merged / abliterated). Point MYSON_MODEL at your model when you have one.
-# For BACKEND=ollama: an Ollama tag (e.g. "qwen3.5:9b-q4_K_M").
-_DEFAULT_LOCAL = "Qwen/Qwen2.5-7B-Instruct"     # real, widely-available, fits 8GB in 4-bit
-_DEFAULT_OLLAMA = "qwen3.5:9b"
-MODEL = os.environ.get("MYSON_MODEL",
-                       _DEFAULT_LOCAL if BACKEND == "local" else _DEFAULT_OLLAMA)
+# HOME MODEL = Gemma 4 26B-A4B, the QAT ("quantization-aware trained") 4-bit GGUF: a
+# mixture-of-experts model, 25.2B parameters of which about 3.8B are active per token.
+# Chosen 2026-10-18 as the generalist pick — see bench/MODEL_REVIEW.md for the evidence and
+# its limits. NOT yet loaded on the 4070: the file is 14.2 GB, so it is split between the GPU
+# and RAM (see the placement knobs below) and its real speed here is still unmeasured.
+# For BACKEND=gguf the value is a HuggingFace GGUF repo id (resolved with GGUF_QUANT to one
+# .gguf file), a path to a .gguf file, or a directory holding one.
+#   For BACKEND=local:  a HF repo id OR a local dir of your own weights (fine-tuned/merged).
+#   For BACKEND=ollama: an Ollama tag (e.g. "gemma4:26b-a4b-it-qat").
+_DEFAULT_GGUF  = "unsloth/gemma-4-26B-A4B-it-qat-GGUF"  # 26B-A4B MoE, QAT 4-bit
+_DEFAULT_LOCAL = "Qwen/Qwen2.5-7B-Instruct"             # fits 8 GB in 4-bit via transformers
+_DEFAULT_OLLAMA = "gemma4:26b-a4b-it-qat"
+MODEL = os.environ.get(
+    "MYSON_MODEL",
+    {"gguf": _DEFAULT_GGUF, "local": _DEFAULT_LOCAL}.get(BACKEND, _DEFAULT_OLLAMA))
 
-# Named roster of models that FIT this box (8 GB VRAM + 32 GB RAM) — dense <=~12B in 4-bit.
-# Datacenter flagships (GLM 5.3, full DeepSeek/Qwen-100B+) are absent; they do not start
-# on this hardware. The router may pick a role-fit model; MODEL is the default.
-if BACKEND == "local":
+# Named roster. The gguf and local backends serve the ONE model they loaded and ignore the
+# per-request role (an 8 GB card cannot hold two), so on those backends every role points at
+# MODEL and the MYSON_MODEL_CODER / _BIG overrides only change the label that /v1/models
+# reports. "Think harder" is the recursion wrapper, not a second model. Only the ollama
+# backend actually switches models per role.
+if BACKEND == "gguf":
+    MODELS = {
+        "default": MODEL,
+        "coder":   os.environ.get("MYSON_MODEL_CODER", MODEL),
+        "big":     os.environ.get("MYSON_MODEL_BIG", MODEL),
+    }
+elif BACKEND == "local":
     MODELS = {
         "default": MODEL,
         "coder":   os.environ.get("MYSON_MODEL_CODER", "Qwen/Qwen2.5-Coder-7B-Instruct"),
@@ -35,21 +53,56 @@ else:
     MODELS = {
         "default": MODEL,
         "coder":   os.environ.get("MYSON_MODEL_CODER", "qwen3.5:9b"),
-        "big":     os.environ.get("MYSON_MODEL_BIG", "gemma4:12b"),
+        "big":     os.environ.get("MYSON_MODEL_BIG", "gemma4:26b-a4b"),
     }
+
+# --- GGUF backend knobs ---------------------------------------------------------------
+# QUANT must name a file that EXISTS in the chosen repo. The QAT default ships one main quant:
+#   gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf   (14.2 GB)
+# The non-QAT build that was run on the benchmark GPU is the fallback:
+#   MYSON_MODEL=unsloth/gemma-4-26B-A4B-it-GGUF  +  MYSON_GGUF_QUANT=Q4_K_M   (16.9 GB)
+GGUF_QUANT = os.environ.get("MYSON_GGUF_QUANT", "Q4_K_XL")
+# Where a repo id's weights are downloaded and looked for first: a visible folder inside the
+# project (git-ignored), one sub-folder per repo. The model is then a plain file on your disk
+# that works with no network.
+GGUF_MODEL_DIR = os.environ.get(
+    "MYSON_MODEL_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models"))
+
+# Placement: what sits on the GPU and what stays in RAM.
+#   N_GPU_LAYERS = -1 (default) lets the backend decide: it reads the model's size and layer
+#   count, measures free VRAM, and puts as many layers on the GPU as fit — all of them when
+#   the whole model fits — while the rest run from RAM. VRAM_RESERVE_MB is what it leaves free
+#   for llama.cpp's compute buffers: raise it if a load fails, lower it to squeeze in a layer.
+#   Any other N_GPU_LAYERS value is used as given (0 = CPU only). llama.cpp itself has no "fit
+#   what you can" mode here: asking it for all layers of a model that is too big fails or crawls.
+GGUF_N_GPU_LAYERS = int(os.environ.get("MYSON_GGUF_N_GPU_LAYERS", "-1"))
+GGUF_VRAM_RESERVE_MB = int(os.environ.get("MYSON_GGUF_VRAM_RESERVE_MB", "1280"))
+#   N_CPU_MOE > 0 asks for the finer split llama.cpp calls --n-cpu-moe: all layers on the GPU,
+#   only a MoE model's expert tensors in RAM. It needs a llama-cpp-python build whose Llama()
+#   accepts n_cpu_moe; 0.3.36 does not, and there the setting is ignored in favour of the layer
+#   split above. Off by default because it has never been run on this machine.
+GGUF_N_CPU_MOE = int(os.environ.get("MYSON_GGUF_N_CPU_MOE", "0"))
+#   Flash attention: less KV-cache memory and usually faster on CUDA.
+GGUF_FLASH_ATTN = os.environ.get("MYSON_GGUF_FLASH_ATTN", "1") not in ("0", "false", "False")
+
+# Google-recommended sampling for Gemma 4 (the brain still sets temperature per call — low for
+# the router/judge/verifier, higher for chat — so only top_p/top_k are fixed here).
+GGUF_TOP_P = float(os.environ.get("MYSON_GGUF_TOP_P", "0.95"))
+GGUF_TOP_K = int(os.environ.get("MYSON_GGUF_TOP_K", "64"))
 
 # Local-backend loading knobs.
 LOCAL_LOAD_4BIT = os.environ.get("MYSON_LOAD_4BIT", "1") not in ("0", "false", "False")
 LOCAL_DEVICE = os.environ.get("MYSON_DEVICE") or None    # None -> cuda if available else cpu
 MAX_NEW_TOKENS = int(os.environ.get("MYSON_MAX_NEW_TOKENS", "512"))
 
-# Embedding model. local: None -> embed with the chat model's own hidden states (no extra
-# download). ollama: a small embed model tag. Degrades to text-cosine if unavailable.
+# Embedding model. ollama: a small embed model tag. local: None -> the chat model's own hidden
+# states. gguf: none — memory and the verifier use their built-in text-cosine fallback.
 EMBED_MODEL = os.environ.get("MYSON_EMBED_MODEL",
-                             "" if BACKEND == "local" else "nomic-embed-text") or None
+                             "" if BACKEND in ("local", "gguf") else "nomic-embed-text") or None
 
-# Context window. Models advertise huge contexts (256K), but at 8 GB VRAM the KV cache —
-# not the weights — is what OOMs you. Keep this modest and measure under load.
+# Context window. The KV cache grows with it and competes with the weights for the same 8 GB,
+# so a bigger window means fewer layers on the GPU. Keep it modest and measure under load.
 NUM_CTX = int(os.environ.get("MYSON_NUM_CTX", "8192"))
 
 # --- persona (Phase D refines this) --------------------------------------------------

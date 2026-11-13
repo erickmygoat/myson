@@ -3,3 +3,15 @@
 .myson_mem*/
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# model weights: downloaded into models/ at the repo root, never committed
+/models/
+*.gguf
+
+# local-only benchmark inputs (third-party problem sets you supply yourself)
+bench/local/
+
+# secrets
+.env
+.env.*
