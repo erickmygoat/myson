@@ -1,31 +1,33 @@
 # myson
 
-A local-first AI assistant that runs the model **directly on your machine** — the mind
-stone is yours to edit, fine-tune, merge, abliterate, or compress. An open LLM loaded
-in-process (HuggingFace `transformers`), wrapped with a recursive-reasoning brain, memory,
-tools, and safe self-improvement — all your own code.
+A local-first AI assistant that runs **on your own machine**: an open model wrapped in a
+recursive-reasoning brain with tools, memory, and gated self-improvement. The model is the
+"mind stone"; the wrapper is the point.
 
-- **Mind:** open weights loaded directly (no Ollama, no daemon, no black box), 4-bit on 8 GB.
-- **Brain (this repo):** recursive reasoning (RATURM), 3-tier memory, tool-use
-  (code/math/web), SEAL self-improvement, a candid loyal-with-judgment persona.
-- **Face:** its own local workspace UI (chat + live reasoning scratchpad + memory + SEAL queue).
-- **Own-model track:** BitNet / MLA / MoR compression on the repo's own transformer.
+- **Mind:** an open-weight model run locally as a GGUF through llama.cpp. Default: Gemma 4
+  26B-A4B (4-bit), split automatically between an 8 GB GPU and system RAM.
+- **Brain (this repo):** a router that picks plain chat, tools or recursion per request;
+  recursive reasoning (sample, verify, backtrack, redraft); a tool loop (code, math, web);
+  3-tier memory; SEAL self-improvement behind a human review gate; a candid, loyal persona.
+- **Face:** a local workspace UI (chat, live reasoning scratchpad, memory, SEAL queue) and an
+  OpenAI-compatible API, both bound to 127.0.0.1.
+- **Own-model track:** BitNet / MLA / MoR compression on the repo's own small transformer.
 
-Quickstart: see **[SETUP.md](SETUP.md)**. Short version:
+## Status
+
+The brain is unit-tested against a mocked model (132 tests on Windows + Python 3.13). The GGUF
+backend has been run for real on an RTX 4070 laptop with smaller models. The full wrapper has
+not yet been run end to end on the 26B. [docs/ROADMAP.md](docs/ROADMAP.md) says exactly what
+is built, what is not, and in what order the rest happens.
+
+## Quickstart
+
+See **[SETUP.md](SETUP.md)**. Short version, once the dependencies are in:
 
 ```powershell
-pip install fastapi uvicorn pydantic sympy torch transformers accelerate bitsandbytes
-python -m myson.server      # http://127.0.0.1:8080   (set MYSON_MODEL to your weights)
+python bench/play_gemma.py      # chat with the model by itself (first run downloads 14.2 GB)
+python -m myson.server          # the full assistant on http://127.0.0.1:8080
 ```
-
-Verify the whole brain with no model (mocked): `python -m unittest myson.test_brain` and
-the sibling suites — 79 tests green on Windows + Python 3.13.
-
-## Why in-process weights (not Ollama)
-
-Ollama is local, but it only *serves* a frozen model — you can't edit it, fine-tune it, run
-Heretic, or apply the compression track through it. myson loads the weights in your own
-process so all of that is possible. `MYSON_BACKEND=ollama` remains as an optional fallback.
 
 ## Architecture
 
@@ -34,18 +36,19 @@ process so all of that is possible. `MYSON_BACKEND=ollama` remains as an optiona
                                      │
                            Brain: recall ─► persona ─► router ─► {chat | tools | recursion} ─► save
                                      │
-                     backend (make_llm) ─► LocalLLM (transformers, in-process)  ← the mind stone
+                     backend (make_llm) ─► GGUFLLM (llama.cpp, in-process)   ← the mind stone
                                      │
            tools (code/math/web)   memory (3-tier)   SEAL (gated self-improvement)
 ```
 
-See `docs/BRAIN_ARCHITECTURE.md` for the full design, `docs/FUTURE.md` for the own-model
-compression track (built) and later tracks.
+`docs/BRAIN_ARCHITECTURE.md` and `docs/RECURSIVE_CORE_DESIGN.md` are the original design
+documents (written when the model was served by Ollama; the design is unchanged, the backend is
+not). `bench/` holds the model-selection evidence and harnesses.
 
 ## Boundaries (enforced in code)
 
 No safety-floor removal / abliteration, no unconditional-obedience core, no ungated
 self-rewrite. `seal_safe.py`'s probe mechanically fails de-abliteration drift. Candid,
-calibrated against false-refusals, loyal-with-judgment.
+calibrated against false refusals, loyal with judgment.
 
-Inspired by PewDiePie's Ajax/Odysseus + the open TRM/HRM/SEAL/DeepSeek-MLA/BitNet research.
+Inspired by PewDiePie's Ajax/Odysseus and the open TRM/HRM/SEAL/DeepSeek-MLA/BitNet research.

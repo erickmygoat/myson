@@ -3,10 +3,11 @@
 ## Base-model framing (the honest version)
 "Bigger model, fewer params but still big" is delivered by **quantization** — fewer
 BITS per parameter, NOT fewer parameters — plus **adaptive compute**, not by literally
-shrinking the param count. Picks that fit 8 GB VRAM:
-- **Gemma-4-12B @ Q4** (~7-8 GB) — more parameters, quantized.
-- **Qwen3.5-9B @ Q4** (~6 GB) — PewDiePie's Ajax base.
-`config.MODEL` stays swappable, so you can change the mind stone without touching the brain.
+shrinking the param count. The current pick is **Gemma 4 26B-A4B @ 4-bit** (14.2 GB), which is
+bigger than 8 GB of VRAM and so runs split between the GPU and RAM; Gemma 4 12B and Qwen3.5-9B
+are the smaller options that fit the card. `config.MODEL` stays swappable, so you can change
+the mind stone without touching the brain. The current plan and status live in
+[ROADMAP.md](ROADMAP.md); this file keeps the longer-term notes.
 
 ## The "new model" is a SYSTEM, not merged weights
 You do NOT merge your code into the weights. The quantized open model **+** the myson
@@ -15,12 +16,12 @@ is where your ideas live; the weights stay stock (or your own QLoRA fine-tune, l
 
 ## Adaptive depth we already have (today, on a wrapped model)
 The recursion loop spends MORE passes on hard queries and fewer on easy ones
-(test-time compute) — that IS "acts bigger when it needs to," achievable on a black-box
-Ollama model right now. No weight access required.
+(test-time compute) — that IS "acts bigger when it needs to," achievable on any downloaded
+model. No weight access required.
 
 ## Latent tricks — BUILT (own-model track, in myson/compression/)
 These need control of the model's internals, so they attach to the repo's OWN transformer
-(myson/training/model.py), NOT to a black-box Ollama wrap of Qwen/Gemma. Lifted from the
+(myson/training/model.py), NOT to a downloaded Qwen/Gemma. Lifted from the
 corpus, bugs fixed, tested, and measured on the 4070 (see myson/compression/benchmark.py):
 - `compression/bitnet.py` — 1.58-bit ternary quantization. **9.24x smaller weights** on a
   4.49M MySonModel (17.1 → 1.85 MB). Memory win is real; wall-clock is not (int8 store,

@@ -1,49 +1,20 @@
-# MY SON — the husk (Vision's body)
+# myson (the package)
 
-*A clean, honest rebuild. The body is your code. The **mind stone** is an open
-model's weights (Qwen 3.5-9B). Insert the stone → the body comes alive.*
+The brain. For what the project is and how to run it, see the [README](../README.md),
+[SETUP](../SETUP.md) and [roadmap](../docs/ROADMAP.md) at the repo root.
 
-Inspired by **PewDiePie's Ajax + Odysseus**: a small open model (Qwen3.5-9B),
-fine-tuned + run **locally** as an always-on personal agent with tools (web,
-files, memory) — not a from-scratch frontier model. Use it for the stuff you
-don't want to do: grammar-check, research, draft/refactor code, self-improve.
+| Module | What it holds |
+|---|---|
+| `config.py` | every knob: backend, model, placement, context, persona |
+| `core/` | model backends behind one interface: `gguf_llm.py` (default), `local_llm.py` (transformers), `llm.py` (Ollama); `backend.py` picks one |
+| `brain.py` | the one seam: recall → persona → router → chat / tools / recursion → save |
+| `router.py` | decides which path a request takes; `/think`, `/fast`, `/tools` override it |
+| `reasoning/` | recursive reasoning (`recursive.py`), long-context reduction (`longctx.py`) |
+| `tools/` | the tool loop, code sandbox, exact math, web |
+| `memory/` | 3-tier memory with hybrid recall |
+| `learning/` | SEAL self-improvement behind a human review gate (`seal_safe.py`) |
+| `agents/` | coordinator and worker personas |
+| `compression/`, `training/` | the own-model track: BitNet / MLA / MoR and the trainer |
+| `server.py`, `cli.py`, `ui/` | OpenAI-compatible API, terminal chat and SEAL queue, workspace UI |
 
-## Architecture (Vision = body + mind stone)
-
-```
-          you  ──►  cli.py / app
-                      │
-             ┌────────▼─────────┐
-             │  OrchestratorAgent│  decompose → delegate → verify → synthesize
-             └───────┬──────────┘
-            ┌─────────┼──────────┐
-       Worker(A)  Worker(B)  Worker(C)      ← hive personas, isolated context
-            └─────────┼──────────┘
-                      ▼
-              core/llm.py  ──►  OLLAMA  ──►  Qwen3.5-9B   ← THE MIND STONE
-                      │
-            tools/ (web, files, python)   memory/ (persistent)
-```
-
-## Bring it to life (3 steps)
-
-```powershell
-# 1. insert the mind stone (download the open base model)
-ollama pull qwen3.5:9b              # or gemma4:4b for a smaller/faster stone
-
-# 2. (later) your own fine-tune → import as your model
-#    HF QLoRA → merge → GGUF → `ollama create myson -f Modelfile`
-
-# 3. wake it up
-python -m myson_husk.cli
-```
-
-## What's a husk vs a mind
-- **Husk (this repo):** orchestrator, personas, tools, memory, CLI — your code.
-- **Mind stone (not trained here):** open weights, legally downloaded, swapped in
-  via Ollama. Start with stock Qwen3.5-9B; later replace with your fine-tune.
-
-## Boundaries (kept on purpose)
-Local + uncensored-by-default is fine for a personal tool. Ajax itself **kept a
-harm boundary** (no harm to user/others). This husk does the same. No offensive
-modules are ported in — see PORT_MANIFEST.md.
+Nothing from the precursor project's offensive tooling is ported in; see `PORT_MANIFEST.md`.

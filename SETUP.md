@@ -1,107 +1,133 @@
 # myson — SETUP (Windows + 8 GB VRAM)
 
-myson runs the model **directly on your machine** (HuggingFace `transformers`), so the mind
-stone is yours — you can edit it, fine-tune it, merge it, abliterate/Heretic it, or apply
-the compression track. No Ollama, no daemon, no black box.
+myson runs its model **on your machine**: no cloud, no daemon. The default path is GGUF through
+`llama-cpp-python` with CUDA, because llama.cpp can split a model between the GPU and system
+RAM, which is the only way a model bigger than 8 GB of VRAM runs on an RTX 4070 laptop.
 
-Everything the brain does is unit-tested *without* a model (mocked), so you can verify the
-code first and only pull weights when you want to actually talk to it.
+The home model is **Gemma 4 26B-A4B (QAT, 4-bit)**: one 14.2 GB file. Why that model, and what
+is still unproven about it, is in [bench/MODEL_REVIEW.md](bench/MODEL_REVIEW.md). What is built
+and what is not is in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+> **Honest status.** The wrapper (router, recursion, tools, memory, SEAL) is unit-tested against
+> a mocked model. The GGUF backend has also been run for real on this laptop against two smaller
+> models. The 26B itself has not been loaded here yet, so its speed is unmeasured.
 
 ---
 
-## 1. Get the code + deps
+## 1. Code and dependencies
 
 ```powershell
 git clone https://github.com/erickmygoat/myson
 cd myson
-pip install fastapi uvicorn pydantic sympy pytest        # brain runtime
+pip install fastapi uvicorn pydantic sympy httpx huggingface_hub
 pip install torch --index-url https://download.pytorch.org/whl/cu124
-pip install transformers accelerate bitsandbytes          # the local mind stone (4-bit)
+pip install llama-cpp-python --only-binary :all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
 ```
 
-`bitsandbytes` is what lets a 7-9B model fit in 8 GB VRAM via 4-bit loading. `peft`/`trl`
-are additionally needed only when you fine-tune (QLoRA).
+The last line installs a prebuilt CUDA wheel (this setup uses 0.3.36). If no wheel matches your
+Python, build from source instead, which needs the CUDA Toolkit and a C++ compiler:
+`$env:CMAKE_ARGS="-DGGML_CUDA=on"; pip install llama-cpp-python --no-cache-dir`.
 
-## 2. Verify it works BEFORE any model (all mocked)
+`torch` is needed even though the model runs through llama.cpp: on Windows, `llama.dll` needs
+the CUDA runtime DLLs, and the backend finds them in torch's `lib` folder. That is also why a
+bare `import llama_cpp` fails here. Check the GPU build like this:
 
 ```powershell
-python -m unittest myson.reasoning.test_recursive myson.tools.test_tools myson.test_brain
-python myson/learning/test_seal_safe.py
-python -m unittest myson.compression.test_compression
+python -c "import os, torch; os.add_dll_directory(os.path.join(os.path.dirname(torch.__file__), 'lib')); import llama_cpp; print('GPU offload:', llama_cpp.llama_supports_gpu_offload())"
 ```
 
-Expected: recursion 13, tools 33, brain 18, SEAL 5/5, compression 10 — all green. None of
-this downloads a model.
-
-## 3. Pick your mind stone
-
-Set `MYSON_MODEL` to a HuggingFace repo id **or a local folder of your own weights**. The
-default is `Qwen/Qwen2.5-7B-Instruct` (fits 8 GB in 4-bit, editable). Only models that fit
-8 GB VRAM + 32 GB RAM belong here — dense ≤~9B in 4-bit. Datacenter flagships (GLM 5.3, full
-DeepSeek/Qwen-100B+) will not start locally; that is hardware, not config.
+## 2. Verify the code (no model needed)
 
 ```powershell
-# use the default, or choose your own:
-$env:MYSON_MODEL = "Qwen/Qwen2.5-7B-Instruct"       # or e.g. a Coder/Gemma model
-# or point at YOUR fine-tuned / merged / abliterated weights:
-$env:MYSON_MODEL = "C:\path\to\my-weights"
+python -m unittest discover -s myson -p "test_*.py"     # 132 tests
+python myson/learning/test_seal_safe.py                 # the 5 SEAL safety checks
 ```
 
-The model downloads (first run) / loads from disk when myson first needs it — not at import.
+The SEAL checks are a script, so the first command does not collect them. Run both.
 
-## 4. Wake it
+## 3. The model
+
+Nothing to configure: `myson/config.py` already names it.
+
+- **Repo / file:** `unsloth/gemma-4-26B-A4B-it-qat-GGUF`, quant `Q4_K_XL` (14.2 GB).
+- **Where it lives:** `models/` at the repo root, one sub-folder per repo, ignored by git. The
+  first run downloads it there; after that it loads from disk with no network at all.
+- **How it fits:** the backend reads the model's layer count, measures free VRAM, and puts as
+  many layers on the GPU as fit. The rest run from RAM. `/health` and the play script report the
+  split it chose. Close GPU-heavy apps first for a better split; a bigger context window leaves
+  room for fewer layers.
+
+Other models, no code change:
+
+```powershell
+# the non-QAT build used in the cloud benchmark
+$env:MYSON_MODEL = "unsloth/gemma-4-26B-A4B-it-GGUF"; $env:MYSON_GGUF_QUANT = "Q4_K_M"
+# the lighter 12B
+$env:MYSON_MODEL = "unsloth/gemma-4-12b-it-GGUF"; $env:MYSON_GGUF_QUANT = "Q4_K_M"
+# any .gguf you already have
+$env:MYSON_MODEL = "D:\models\something.gguf"
+```
+
+## 4. Play with the model by itself
+
+```powershell
+python bench/play_gemma.py
+```
+
+A plain chat with the model and myson's persona: no server, no wrapper. It prints where the
+weights were placed and the speed of every reply. `python bench/play_gemma.py "a question"`
+answers once and exits.
+
+## 5. Wake the full assistant
 
 ```powershell
 python -m myson.server          # workspace + API on http://127.0.0.1:8080
+python -m myson.cli             # or chat in the terminal; /think, /fast, /tools steer it
 ```
 
-Open **http://127.0.0.1:8080/** for the workspace (chat, live reasoning scratchpad, memory
-browser, SEAL queue). The first message loads the weights (slow once, fast after). Or chat
-in the terminal:
+The workspace has chat, a live reasoning scratchpad, a memory browser and the SEAL queue. The
+model loads on the first message. `curl http://127.0.0.1:8080/health` shows whether the runtime
+is ready and how the weights were placed.
 
-```powershell
-python -m myson.cli             # prefix with /think, /fast or /tools to steer
-```
-
-Health: `curl http://127.0.0.1:8080/health` → `mind_stone_reachable` and `embeddings` go
-true once the model is loaded.
-
-## 5. Knobs (environment variables)
+## 6. Knobs (environment variables)
 
 | Var | Default | What |
 |---|---|---|
-| `MYSON_BACKEND` | `local` | `local` (in-process weights) or `ollama` (fallback black box) |
-| `MYSON_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | HF repo id **or local weights path** |
-| `MYSON_LOAD_4BIT` | `1` | 4-bit load (needs bitsandbytes); set `0` for fp16 |
-| `MYSON_DEVICE` | auto | `cuda` / `cpu`; auto picks cuda if present |
-| `MYSON_MAX_NEW_TOKENS` | `512` | generation length cap |
-| `MYSON_NUM_CTX` | `8192` | context window — the KV cache, not the weights, OOMs 8 GB |
-| `MYSON_MEMORY_DIR` | `.myson_mem` | memory + SEAL state |
-| `MYSON_RECURSION_MAX_STEPS` | `6` | interactive recursion cap (hard ceiling 16) |
+| `MYSON_BACKEND` | `gguf` | `gguf`, `local` (transformers, for working on weights) or `ollama` |
+| `MYSON_MODEL` | `unsloth/gemma-4-26B-A4B-it-qat-GGUF` | GGUF repo id, `.gguf` file, or a folder holding one |
+| `MYSON_GGUF_QUANT` | `Q4_K_XL` | which quant file to take from a repo; it must exist there |
+| `MYSON_MODEL_DIR` | `models/` in the repo | where downloaded weights are kept |
+| `MYSON_GGUF_N_GPU_LAYERS` | `-1` | `-1` decides automatically; any other number is used as given |
+| `MYSON_GGUF_VRAM_RESERVE_MB` | `1280` | VRAM left free when deciding; raise it if a load fails |
+| `MYSON_GGUF_N_CPU_MOE` | `0` | expert-only offload, for llama-cpp-python builds that support it (0.3.36 does not) |
+| `MYSON_GGUF_FLASH_ATTN` | `1` | flash attention: smaller KV cache |
+| `MYSON_GGUF_TOP_P` / `_TOP_K` | `0.95` / `64` | Gemma's recommended sampling |
+| `MYSON_NUM_CTX` | `8192` | context window; bigger means fewer layers on the GPU |
+| `MYSON_MAX_NEW_TOKENS` | `512` | longest reply |
+| `MYSON_MEMORY_DIR` | `.myson_mem` | memory and SEAL state |
+| `MYSON_RECURSION_MAX_STEPS` | `6` | recursion step cap (hard ceiling 16) |
 
-## 6. SEAL (self-improvement) — gated on purpose
+With the GGUF backend there is no embedding model, so memory recall uses its built-in
+text-cosine matching.
 
-Self-edits never auto-apply:
+## 7. SEAL (self-improvement) — gated on purpose
+
+Self-edits never apply themselves:
 
 ```powershell
 python -m myson.cli seal list | review <id> | approve <id> | apply <id> | versions | rollback <n>
 ```
 
-## 7. Own the model: edit / fine-tune / compress
+## 8. Working on weights
 
-Because the weights are in-process, these are all on the table (own-model tracks):
-
-```powershell
-python -m myson.compression.benchmark   # real BitNet/MLA/MoR numbers on YOUR GPU
-# QLoRA fine-tune uses myson/training/trainer.py (needs peft/trl/bitsandbytes/accelerate)
-```
-
-Point `MYSON_MODEL` at the result and myson serves your own model. This is why we run the
-weights directly instead of through a serving daemon — a black box can't be edited.
+Fine-tuning, merging and the compression track use `MYSON_BACKEND=local` (transformers) and
+need `transformers accelerate bitsandbytes peft trl`. The compression benchmark
+(`python -m myson.compression.benchmark`) runs on the repo's own small transformer, not on
+Gemma. Fine-tuning a model the size of the 26B needs a bigger GPU than this laptop; the route is
+train elsewhere, merge, convert to GGUF, and point `MYSON_MODEL` at the result.
 
 ## Boundaries (enforced in code, not just policy)
 
-No abliteration of the harm floor, no unconditional-obedience core, no ungated self-rewrite
-or auto-deploy. `seal_safe.py`'s probe mechanically fails de-abliteration drift. The persona
-is candid, calibrated against false-refusals, and loyal-with-judgment — JARVIS, not a
-yes-man.
+No abliteration of the harm floor, no unconditional-obedience core, no ungated self-rewrite or
+auto-deploy. `seal_safe.py`'s probe mechanically fails de-abliteration drift. The persona is
+candid, calibrated against false refusals, and loyal with judgment.
