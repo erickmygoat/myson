@@ -12,6 +12,10 @@ owned and editable by its owner. The open model is the "mind stone"; **the wrapp
 point**: recursive reasoning, tools, memory, gated self-improvement and a loyal, candid persona
 around that model. A bare model, however good, was never the goal.
 
+What it has to be good at, as the owner put it across the planning sessions: hard reasoning
+(contest-level math), coding and agentic work, security (defensive, authorized testing, CTF),
+and ordinary conversation. A generalist, not a specialist.
+
 ## "Recursive Gemma": what that means here
 
 Gemma 4 26B-A4B, running locally as a GGUF, driven by myson's text-space reasoning loop instead
@@ -66,8 +70,8 @@ The owner set this order and it has not changed since October:
 | Benchmarks | pick the model; measure recursion on vs off | model selection **done** on cloud hardware. The recursion A/B on the real model — the claim that matters most — **not done** |
 | Own-model compression | BitNet / MLA / MoR on the repo's own transformer | **built** and measured (`myson/compression`). It applies to weights we train, not to a downloaded Gemma |
 | Fine-tuning | QLoRA → merge → GGUF | **not started**. Open question: target model and where it trains (the 26B cannot be tuned on 8 GB) |
-| Model merging | same-family merge into one GGUF | **not started** |
-| Subagents | coordinator and workers | basic `agents/` present; the fuller layer from the old tree was not ported |
+| Combining models | route requests between several models; merge weights into one | routing is **not possible** while one 14 GB model fills the machine (the GGUF backend serves the single loaded model). Weight merging is **not started** and only works within one model family |
+| Subagents | coordinator and workers | basic `agents/` (coordinator, worker personas) present. Not ported from the old tree: the code-aware architect, the scheduler, and debate between agents as an optional verifier |
 | Docs and git | truthful setup docs, history pushed | this pass |
 
 ## Lessons carried over from the precursor project
@@ -96,8 +100,15 @@ Nothing from the old tree's offensive tooling or its insecure control plane ente
 The not-over-refusing behaviour comes from persona calibration, which is why that evaluation is
 on the list above.
 
+**Recorded honestly:** the owner asked more than once for an abliterated ("uncensored") base
+model and for ungated self-modification. Neither is built here, and that was the builder's
+decision, not an agreement. What stands in their place is calibration (stop the false refusals
+on ordinary questions, keep the harm floor) and a human review gate on self-edits. Whether that
+is enough is the owner's call, to be judged on the false-refusal evaluation once it has run.
+
 ## Open questions for the owner
 
+- Is calibration instead of an uncensored base acceptable, once the false-refusal numbers exist?
 - Is voice input part of the JARVIS experience? The 26B has none; the 12B does.
 - Fine-tuning: which model, and trained where?
 - Is model merging still wanted, and between which two same-family models?
