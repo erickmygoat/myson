@@ -134,7 +134,16 @@ def _model_shape(Llama, path: str, n_ctx: int) -> Optional[tuple[int, int]]:
         kv_heads = num("attention.head_count_kv", heads) or heads
         key_len = num("attention.key_length", n_embd // heads)
         val_len = num("attention.value_length", key_len)
-        return n_layers, n_ctx * kv_heads * (key_len + val_len) * 2      # K and V stored as f16
+        kv = n_ctx * kv_heads * (key_len + val_len) * 2      # full-attention layer, K and V as f16
+        window = num("attention.sliding_window", 0)
+        if 0 < window < n_ctx:
+            # Sliding-window models (Gemma) keep only `window` tokens, with smaller heads, on
+            # their local layers. The header does not say which layers are global, so assume
+            # one in five; counting all as global left 2 GB of VRAM unused on the 26B.
+            local = window * kv_heads * (num("attention.key_length_swa", key_len)
+                                         + num("attention.value_length_swa", val_len)) * 2
+            kv = (kv + 4 * local) // 5
+        return n_layers, kv
     except Exception:
         return None
     finally:

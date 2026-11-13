@@ -73,12 +73,16 @@ removing the safety floor is outside this project's boundaries.
 **Gemma 4 26B-A4B, QAT `Q4_K_XL` (`unsloth/gemma-4-26B-A4B-it-qat-GGUF`) is the default in
 `myson/config.py`.**
 
+Measured on the 4070 (2026-11-13, play script, persona as the system prompt): the backend puts
+11–12 of the 30 layers on the GPU (about 6.5 GB of VRAM) and the rest in RAM, and the model
+answers at **21–25 tokens per second**, at both 4096 and 8192 tokens of context. The first token
+arrives after about 2 s once the file is in the disk cache, 10–30 s on a cold start, and in
+under a second on follow-up turns. The installed llama-cpp-python (0.3.36) has no
+expert-offload option (`n_cpu_moe`), so this is a plain split by whole layers.
+
 What is not established yet:
 
-- **It has not been loaded on the 4070.** The installed llama-cpp-python (0.3.36) has no
-  expert-offload option (`n_cpu_moe`), so the backend splits the model by whole layers between
-  the GPU and RAM instead. That code is unit-tested and has been run on smaller local models;
-  the 26B's real speed on this machine is unmeasured.
+- The 12B has not been run on this laptop, so the 12B-versus-26B comparison here is open.
 - The verbosity noted above is not handled anywhere yet. Stripping the reasoning trace and a
   non-thinking mode for easy prompts are planned wrapper work.
 - The wrapper (router, recursion, tools, memory) has only ever run against mocks.

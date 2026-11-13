@@ -9,8 +9,10 @@ is still unproven about it, is in [bench/MODEL_REVIEW.md](bench/MODEL_REVIEW.md)
 and what is not is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 > **Honest status.** The wrapper (router, recursion, tools, memory, SEAL) is unit-tested against
-> a mocked model. The GGUF backend has also been run for real on this laptop against two smaller
-> models. The 26B itself has not been loaded here yet, so its speed is unmeasured.
+> a mocked model and has not yet been run end to end on a real one. The GGUF backend and the
+> play script have been run for real on this laptop, on the 26B itself: 11–12 of its 30 layers
+> on the GPU, 21–25 tokens per second, about 2 s to the first token once the file is cached
+> (10–30 s on a cold start).
 
 ---
 
@@ -39,7 +41,7 @@ python -c "import os, torch; os.add_dll_directory(os.path.join(os.path.dirname(t
 ## 2. Verify the code (no model needed)
 
 ```powershell
-python -m unittest discover -s myson -p "test_*.py"     # 132 tests
+python -m unittest discover -s myson -p "test_*.py"     # 133 tests
 python myson/learning/test_seal_safe.py                 # the 5 SEAL safety checks
 ```
 

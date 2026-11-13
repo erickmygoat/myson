@@ -22,13 +22,14 @@ open weights and the wrapper **as one system**; nothing is merged into the weigh
   long-context reduction, 3-tier memory, SEAL review queue and CLI, server with streaming,
   workspace UI, own-model compression track.
 - **Run for real on the 4070:** the GGUF backend (loading, automatic GPU/RAM split, chat,
-  streaming, strict chat templates, concurrent requests), against two smaller local models.
-- **Not done:** the 26B has not been loaded on this machine; the wrapper has never run end to
-  end on a real model; no recursion on-versus-off measurement exists.
+  streaming, strict chat templates, concurrent requests) and the play script, on the 26B
+  itself: 11–12 of 30 layers on the GPU, 21–25 tokens per second.
+- **Not done:** the wrapper has never run end to end on a real model; no recursion
+  on-versus-off measurement exists.
 
 ## Next, in the owner's order
 
-1. Model on disk (`models/`), then **the owner plays with it by itself**: `python bench/play_gemma.py`.
+1. The model is on disk (`models/`) and runs. Now **the owner plays with it by itself**: `python bench/play_gemma.py`.
 2. First end-to-end run of the wrapper on the real model.
 3. The rest of the list in `docs/ROADMAP.md`: recursion A/B, wall-clock cap, sandbox on the
    default path, thinking-mode mapping, persona calibration, fine-tuning.

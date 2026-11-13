@@ -379,6 +379,29 @@ class TestPlacement(unittest.TestCase):
             self.assertEqual(llm._placement(_LlamaNoMoe, "p"), {"n_gpu_layers": 12})
         self.assertIn("12 of 30 layers", llm.placement)
 
+    def test_kv_estimate_knows_about_sliding_window_layers(self):
+        # Gemma 4 keeps a 1024-token window with smaller heads on most layers. Counting every
+        # layer as full attention made the planner put 10 of the 26B's layers on the GPU when
+        # 14 fit. Values below are that model's real header.
+        md = {"general.architecture": "gemma4", "gemma4.block_count": "30",
+              "gemma4.embedding_length": "2816", "gemma4.attention.head_count": "16",
+              "gemma4.attention.key_length": "512", "gemma4.attention.value_length": "512",
+              "gemma4.attention.sliding_window": "1024",
+              "gemma4.attention.key_length_swa": "256", "gemma4.attention.value_length_swa": "256"}
+
+        class Probe:
+            def __init__(self, **kw):
+                self.metadata = md
+
+            def close(self):
+                pass
+
+        full = 4096 * 16 * (512 + 512) * 2
+        local = 1024 * 16 * (256 + 256) * 2
+        self.assertEqual(gguf_llm._model_shape(Probe, "p", 4096), (30, (full + 4 * local) // 5))
+        del md["gemma4.attention.sliding_window"]          # a model without a window: all full
+        self.assertEqual(gguf_llm._model_shape(Probe, "p", 4096), (30, full))
+
     def test_unmeasurable_vram_keeps_the_configured_value(self):
         llm = GGUFLLM(model="x", n_gpu_layers=-1, n_cpu_moe=0)
         with mock.patch.object(gguf_llm, "_free_vram_bytes", return_value=None), \

@@ -15,9 +15,9 @@ recursive-reasoning brain with tools, memory, and gated self-improvement. The mo
 
 ## Status
 
-The brain is unit-tested against a mocked model (132 tests on Windows + Python 3.13). The GGUF
-backend has been run for real on an RTX 4070 laptop with smaller models. The full wrapper has
-not yet been run end to end on the 26B. [docs/ROADMAP.md](docs/ROADMAP.md) says exactly what
+The brain is unit-tested against a mocked model (133 tests on Windows + Python 3.13). The GGUF
+backend runs the 26B for real on an RTX 4070 laptop at 21–25 tokens per second. The full wrapper
+has not yet been run end to end on it. [docs/ROADMAP.md](docs/ROADMAP.md) says exactly what
 is built, what is not, and in what order the rest happens.
 
 ## Quickstart

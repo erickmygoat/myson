@@ -34,10 +34,10 @@ the real Gemma yet.** That gap is the main thing this roadmap is about.
 
 The owner set this order and it has not changed since October:
 
-1. **Get the model onto the machine.** In progress: the 14.2 GB QAT build downloads into
-   `models/`.
+1. **Get the model onto the machine.** Done 2026-11-13: the 14.2 GB QAT build is in `models/`
+   and runs on the 4070 at 21–25 tokens per second.
 2. **Play with it by itself** (`python bench/play_gemma.py`) before anything else is built on
-   it. This is also where its real speed on the 4070 gets measured for the first time.
+   it. **This is where things stand.**
 3. **Then the model work**, in this order:
    1. first real end-to-end run of the wrapper on the model (server up, a real answer back);
    2. recursion on versus off, same model, same questions, real numbers;
@@ -50,9 +50,9 @@ The owner set this order and it has not changed since October:
 
 | Track | Planned | Status |
 |---|---|---|
-| Model on the machine | open weights, on disk, offline | **in progress** — downloading; never yet loaded on the 4070 |
-| Runtime | load a model bigger than VRAM | **built** — GGUF backend splits layers between GPU and RAM automatically; proven on two smaller local models, not yet on the 26B |
-| Play with it alone | standalone chat with the persona | **built** — `bench/play_gemma.py`; waiting on the download |
+| Model on the machine | open weights, on disk, offline | **done** — in `models/`; loads from disk with no network |
+| Runtime | load a model bigger than VRAM | **built and measured** — GGUF backend splits layers between GPU and RAM automatically: 11–12 of the 26B's 30 layers on the GPU, 21–25 tokens per second |
+| Play with it alone | standalone chat with the persona | **ready** — `bench/play_gemma.py`; the owner's turn |
 | Router | auto-pick chat / tools / recursion, `/think` `/fast` `/tools` overrides | **built**, mock-tested. The "hard enough for recursion" threshold was reserved for the owner to tune and still has its default |
 | Recursive reasoning | sample → verify → backtrack → redraft, adaptive depth | **built**, mock-tested (`myson/reasoning/recursive.py`). Never run on the real model |
 | Latency caps | step cap plus a wall-clock budget | **half done** — the step cap is wired; `RECURSION_WALL_SECONDS` is defined but nothing enforces it. Needed before recursion runs on a slow local model |
